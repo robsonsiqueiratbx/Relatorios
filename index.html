@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tubrax | Checklist Estamparia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, serverTimestamp, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variáveis globais de ambiente
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{"apiKey": "","authDomain": "","projectId": "","storageBucket": "","messagingSenderId": "","appId": ""}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tubrax-cloud-v2';
+        const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Expor para o escopo global para o formulário
+        window.firebaseTools = { db, auth, appId, doc, setDoc, serverTimestamp, collection };
+
+        async function initAuth() {
+            try {
+                if (authToken) {
+                    await signInWithCustomToken(auth, authToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Erro na autenticação:", error);
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("Sessão ativa:", user.uid);
+                document.getElementById('cloud-status').innerHTML = '<span class="flex h-2 w-2 rounded-full bg-green-500"></span> Online';
+            } else {
+                initAuth();
+            }
+        });
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+        .navy-gradient { background: linear-gradient(135deg, #002147 0%, #003366 100%); }
+        .card-shadow { box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05); }
+        .input-focus:focus { ring: 2px; ring-color: #00CED1; border-color: #00CED1; }
+        
+        .checkbox-custom {
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 0.375rem;
+            border: 2px solid #cbd5e1;
+            transition: all 0.2s;
+        }
+        .checkbox-custom:checked {
+            background-color: #00CED1;
+            border-color: #00CED1;
+        }
+        .checkbox-custom:disabled {
+            background-color: #f1f5f9;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        @keyframes pulse-soft {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        .pulse { animation: pulse-soft 2s infinite; }
+        
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body class="antialiased text-slate-800">
+
+    <!-- Modal de Sucesso/Sincronização -->
+    <div id="status-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <div id="modal-loading">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-50 mb-4">
+                    <i class="fas fa-circle-notch fa-spin text-2xl text-navy-800"></i>
+                </div>
+                <h3 class="text-xl font-bold text-slate-900">Enviando para Nuvem...</h3>
+                <p class="text-slate-500 text-sm mt-2">Estamos a guardar os seus dados no servidor do Grupo TBX.</p>
+            </div>
+            <div id="modal-success" class="hidden">
+                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                    <i class="fas fa-check text-2xl text-green-600"></i>
+                </div>
+                <h3 class="text-xl font-bold text-slate-900">Checklist Concluído!</h3>
+                <p class="text-slate-500 text-sm mt-2">Relatório enviado com sucesso para a base de dados.</p>
+                <button onclick="closeModalAndReset()" class="mt-6 w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-all">Novo Checklist</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        
+        <!-- Header -->
+        <header class="bg-white rounded-3xl card-shadow p-6 mb-8 border border-slate-100">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                <div class="flex items-center gap-4">
+                    <div class="navy-gradient p-3.5 rounded-2xl shadow-lg">
+                        <span class="text-white font-extrabold text-xl tracking-tighter">TBX</span>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-extrabold text-slate-900 leading-tight">CHECKLIST ESTAMPARIA</h1>
+                        <p id="cloud-status" class="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                            <span class="flex h-2 w-2 rounded-full bg-amber-400"></span> Conectando...
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 no-print">
+                    <button onclick="confirmReset()" class="p-3 text-slate-400 hover:text-red-500 transition-colors" title="Resetar">
+                        <i class="fas fa-redo-alt"></i>
+                    </button>
+                    <button onclick="window.print()" class="px-5 py-2.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-200 transition-all">
+                        <i class="fas fa-file-pdf mr-2"></i>PDF
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Operador Responsável</label>
+                    <div class="relative">
+                        <i class="fas fa-user-circle absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"></i>
+                        <input type="text" id="operator-name" placeholder="Nome Completo" 
+                            class="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+                            oninput="updateState()">
+                    </div>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">Data do Turno</label>
+                    <div class="py-3.5 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-600">
+                        <i class="fas fa-calendar-alt mr-2 text-slate-300"></i>
+                        <span id="display-date">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progresso -->
+            <div class="mt-8 pt-6 border-t border-slate-100">
+                <div class="flex justify-between items-end mb-2.5">
+                    <span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Itens Verificados</span>
+                    <span id="progress-text" class="text-sm font-extrabold text-cyan-600">0/10</span>
+                </div>
+                <div class="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-cyan-500 transition-all duration-500 ease-out w-0"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Container do Checklist -->
+        <div id="checklist-render" class="space-y-8">
+            <!-- Gerado via JS -->
+        </div>
+
+        <!-- Botão Finalizar -->
+        <div class="mt-12 no-print">
+            <button id="btn-submit" onclick="submitChecklist()" 
+                class="w-full py-5 bg-slate-900 text-white rounded-2xl font-bold text-sm uppercase tracking-[0.2em] shadow-xl hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none transition-all flex items-center justify-center gap-3">
+                <i class="fas fa-cloud-upload-alt"></i>
+                Finalizar
+            </button>
+            <div id="validation-hint" class="mt-4 text-center">
+                 <p id="error-msg" class="text-[10px] font-bold text-slate-400 uppercase">
+                    Preencha seu nome e pelo menos 1 item com foto para finalizar.
+                </p>
+            </div>
+        </div>
+
+        <footer class="mt-16 text-center text-slate-300 pb-12">
+            <p class="text-[10px] font-bold tracking-[0.4em] uppercase">Grupo TBX &copy; 2024 - Estamparia Avançada</p>
+        </footer>
+    </div>
+
+    <script>
+        const SECTIONS = [
+            { 
+                id: 'prensas',
+                title: "⚙️ Prensas e Equipamentos", 
+                items: [
+                    { id: 'ph_pressure', text: "PH 01-04: Pressão e níveis hidráulicos ok?" },
+                    { id: 'safety_light', text: "Sensores de segurança e cortinas de luz ativos?" },
+                    { id: 'pe_lube', text: "PE 05-06: Lubrificação de bielas verificada?" },
+                    { id: 'pe_brake', text: "Sistema de freio e embraiagem testado?" }
+                ] 
+            },
+            { 
+                id: 'processo',
+                title: "🧼 Lavagem e Tratamento", 
+                items: [
+                    { id: 'wash_chem', text: "Concentração de detergente e temperatura da água?" },
+                    { id: 'furnace_temp', text: "Forno: Temperatura de recozimento calibrada?" },
+                    { id: 'cooling_sys', text: "Integridade do sistema de arrefecimento?" }
+                ] 
+            },
+            { 
+                id: 'qualidade',
+                title: "💎 Qualidade e 5S", 
+                items: [
+                    { id: 'mat_spec', text: "Conformidade do lote de aço (201/304)?" },
+                    { id: 'vis_insp', text: "Ausência de riscos, rebarbas e deformidades?" },
+                    { id: 'clean_area', text: "Área limpa e scrap devidamente segregado?" }
+                ] 
+            }
+        ];
+
+        let state = {
+            operator: '',
+            checks: {},
+            photos: {}
+        };
+
+        function init() {
+            // Data de hoje
+            document.getElementById('display-date').innerText = new Date().toLocaleDateString('pt-PT', { 
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+            });
+
+            // Carregar dados salvos
+            const saved = localStorage.getItem('tbx_checklist_temp');
+            if (saved) {
+                state = JSON.parse(saved);
+                document.getElementById('operator-name').value = state.operator || '';
+            }
+
+            render();
+            updateProgress();
+        }
+
+        function render() {
+            const container = document.getElementById('checklist-render');
+            container.innerHTML = '';
+
+            const isNameValid = state.operator.trim().length > 3;
+
+            SECTIONS.forEach(section => {
+                const sectionEl = document.createElement('div');
+                sectionEl.className = "bg-white rounded-3xl card-shadow border border-slate-100 overflow-hidden";
+                
+                let itemsHtml = section.items.map(item => {
+                    const hasPhoto = !!state.photos[item.id];
+                    const isChecked = !!state.checks[item.id];
+                    const canCheck = hasPhoto && isNameValid;
+
+                    return `
+                        <div class="p-6 flex flex-col md:flex-row md:items-center gap-6 border-b border-slate-50 last:border-0">
+                            <div class="flex-1">
+                                <p class="text-sm font-bold text-slate-800 mb-3">${item.text}</p>
+                                <div class="flex flex-wrap items-center gap-3 no-print">
+                                    <label class="cursor-pointer group">
+                                        <input type="file" accept="image/*" capture="environment" class="hidden" onchange="uploadPhoto(this, '${item.id}')">
+                                        <div class="px-4 py-2 rounded-xl text-[10px] font-extrabold uppercase transition-all ${hasPhoto ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}">
+                                            <i class="fas ${hasPhoto ? 'fa-check-circle' : 'fa-camera'} mr-2"></i>
+                                            ${hasPhoto ? 'Alterar Foto' : 'Tirar Foto'}
+                                        </div>
+                                    </label>
+                                    <span class="text-[9px] font-black uppercase tracking-widest ${!isNameValid ? 'text-slate-300' : (!hasPhoto ? 'text-amber-500 pulse' : 'text-green-500')}">
+                                        ${!isNameValid ? 'Aguardando Nome' : (!hasPhoto ? 'Obrigatório tirar foto' : 'Foto Pronta')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-6">
+                                ${hasPhoto ? `
+                                    <div class="relative w-16 h-16 rounded-2xl overflow-hidden shadow-inner bg-slate-100 border-2 border-slate-50">
+                                        <img src="${state.photos[item.id]}" class="w-full h-full object-cover">
+                                    </div>
+                                ` : ''}
+                                <div class="flex flex-col items-center gap-1">
+                                    <input type="checkbox" 
+                                        ${isChecked ? 'checked' : ''} 
+                                        ${!canCheck ? 'disabled' : ''} 
+                                        onchange="toggleCheck('${item.id}', this.checked)"
+                                        class="checkbox-custom cursor-pointer">
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase">OK</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                sectionEl.innerHTML = `
+                    <div class="navy-gradient px-6 py-4">
+                        <h2 class="text-white font-extrabold text-[10px] uppercase tracking-[0.2em]">${section.title}</h2>
+                    </div>
+                    <div class="flex flex-col">${itemsHtml}</div>
+                `;
+                container.appendChild(sectionEl);
+            });
+        }
+
+        function uploadPhoto(input, id) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_SIZE = 500;
+                    let w = img.width, h = img.height;
+                    
+                    if (w > h) { if (w > MAX_SIZE) { h *= MAX_SIZE / w; w = MAX_SIZE; } }
+                    else { if (h > MAX_SIZE) { w *= MAX_SIZE / h; h = MAX_SIZE; } }
+
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    
+                    state.photos[id] = canvas.toDataURL('image/jpeg', 0.7);
+                    updateState();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function toggleCheck(id, val) {
+            state.checks[id] = val;
+            updateState();
+        }
+
+        function updateState() {
+            state.operator = document.getElementById('operator-name').value;
+            localStorage.setItem('tbx_checklist_temp', JSON.stringify(state));
+            render();
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const totalItems = SECTIONS.reduce((acc, s) => acc + s.items.length, 0);
+            const completed = Object.values(state.checks).filter(v => v === true).length;
+            const percent = totalItems === 0 ? 0 : Math.round((completed / totalItems) * 100);
+
+            document.getElementById('progress-bar').style.width = `${percent}%`;
+            document.getElementById('progress-text').innerText = `${completed}/${totalItems}`;
+
+            const btn = document.getElementById('btn-submit');
+            const errorMsg = document.getElementById('error-msg');
+            
+            const isReady = completed >= 1 && state.operator.trim().length > 3;
+            btn.disabled = !isReady;
+            
+            if (isReady) {
+                errorMsg.innerText = "Checklist pronto para envio.";
+                errorMsg.classList.remove('text-slate-400');
+                errorMsg.classList.add('text-green-500');
+            } else {
+                errorMsg.innerText = "Preencha seu nome e pelo menos 1 item com foto para finalizar.";
+                errorMsg.classList.remove('text-green-500');
+                errorMsg.classList.add('text-slate-400');
+            }
+            
+            return completed;
+        }
+
+        async function submitChecklist() {
+            const completed = updateProgress();
+            if (completed < 1 || state.operator.trim().length <= 3) return;
+
+            document.getElementById('status-modal').style.display = 'flex';
+            document.getElementById('modal-loading').classList.remove('hidden');
+            document.getElementById('modal-success').classList.add('hidden');
+
+            try {
+                const { db, appId, doc, setDoc, serverTimestamp, auth } = window.firebaseTools;
+                
+                if (!auth.currentUser) throw new Error("Aguardando autenticação...");
+
+                const submissionId = `REP-${Date.now()}`;
+                const path = doc(db, 'artifacts', appId, 'public', 'data', 'submissions', submissionId);
+
+                await setDoc(path, {
+                    ...state,
+                    submittedAt: serverTimestamp(),
+                    uid: auth.currentUser.uid,
+                    appVersion: '2.1.0-estamparia'
+                });
+
+                document.getElementById('modal-loading').classList.add('hidden');
+                document.getElementById('modal-success').classList.remove('hidden');
+
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao sincronizar dados. Verifique a ligação à internet.");
+                document.getElementById('status-modal').style.display = 'none';
+            }
+        }
+
+        function closeModalAndReset() {
+            localStorage.removeItem('tbx_checklist_temp');
+            location.reload();
+        }
+
+        function confirmReset() {
+            if (confirm("Deseja limpar todo o formulário e começar um novo?")) {
+                closeModalAndReset();
+            }
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
